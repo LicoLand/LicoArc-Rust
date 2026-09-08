@@ -1,0 +1,16 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: tools/verify <explicit-licoarc-bundle>" >&2
+  exit 64
+fi
+
+LICOARC_AUTHORITY_BUNDLE=$1
+export LICOARC_AUTHORITY_BUNDLE
+
+cargo fmt --all --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked --doc --quiet
+cargo test --locked --all-targets --quiet
+echo "verification=passed authority=explicit conformance=complete evidence=privacy-minimal"

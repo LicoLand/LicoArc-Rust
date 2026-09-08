@@ -1,0 +1,33 @@
+[package]
+name = "licoarc-rust"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+publish = false
+license = "GPL-3.0-or-later"
+description = "Independent safe-Rust implementation of the current Lico Arc stable-core Candidate."
+
+[lib]
+name = "licoarc"
+path = "src/lib.rs"
+
+[dependencies]
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["zeroize"] }
+ed25519-dalek = { version = "=3.0.0", default-features = false, features = ["signature", "zeroize"] }
+hkdf = { version = "=0.13.0", default-features = false }
+hmac = { version = "=0.13.0", default-features = false }
+ml-dsa = { version = "=0.1.1", default-features = false, features = ["alloc", "zeroize"] }
+ml-kem = { version = "=0.3.2", default-features = false, features = ["alloc", "zeroize"] }
+ryu-js = "1.0.3"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.143", features = ["float_roundtrip"] }
+sha2 = { version = "=0.11.0", default-features = false }
+x25519-dalek = { version = "=3.0.0", default-features = false, features = ["static_secrets", "zeroize"] }
+zeroize = { version = "=1.9.0", default-features = false }
+
+[lints.rust]
+unsafe_code = "forbid"
+warnings = "deny"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
