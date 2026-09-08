@@ -1,0 +1,4 @@
+#!/bin/sh
+# lico-dev-hook:v2-target
+command -v lico-dev >/dev/null 2>&1 || exit 1
+exec lico-dev gate commit --context .

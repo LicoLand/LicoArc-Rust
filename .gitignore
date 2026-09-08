@@ -1,0 +1,10 @@
+target/
+build/
+cache/
+coverage/
+*.log
+.DS_Store
+
+# Local-only working material; never publish directly.
+docs/plans/
+docs/reports/
