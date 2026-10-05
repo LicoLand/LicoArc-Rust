@@ -1,0 +1,53 @@
+name: General-Auditor
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+      - "*-v*.*.*"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  auditor:
+    name: Auditor
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Run General-Auditor
+        uses: Unka-Malloc/General-Auditor@only
+        with:
+          repository: ${{ github.repository }}
+          directory: .
+          head: ${{ github.event.pull_request.head.sha || github.sha }}
+          base: ${{ github.event.pull_request.base.sha || github.event.before }}
+          scope: ${{ github.ref_type == 'tag' && 'history' || 'auto' }}
+          output: general-auditor-result.json
+      - name: Publish redacted job summary
+        run: |
+          python3 -I - <<'PYTHON'
+          import json, os
+          with open('general-auditor-result.json') as stream:
+              result = json.load(stream)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
+              stream.write('General-Auditor: ' + str(len(result['findings'])) + ' advisory signals. Contextual Agent review is not performed in CI.\n')
+          PYTHON
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: general-auditor-report
+          path: |
+            general-auditor-result.json
+            general-auditor-result.json.html
+          retention-days: 30
+          if-no-files-found: error
