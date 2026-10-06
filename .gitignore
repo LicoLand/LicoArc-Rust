@@ -8,3 +8,6 @@ coverage/
 # Local-only working material; never publish directly.
 docs/plans/
 docs/reports/
+
+# Private local audit evidence and reports. Never publish.
+/.general-auditor/local/
