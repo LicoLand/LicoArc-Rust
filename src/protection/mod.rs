@@ -698,6 +698,201 @@ fn ratchet_header_length(packet: &[u8]) -> Result<usize, Error> {
     Err(record_error(ErrorCode::InvalidRepresentation))
 }
 
+// ---------------------------------------------------------------------------
+// Checkpoint codecs for caller-owned durable state
+// ---------------------------------------------------------------------------
+//
+// `HybridSecrets` and `RatchetState` are the only secret-bearing parts of one
+// Endpoint snapshot. The protocol requires a restart to restore the last
+// complete committed snapshot, and the durable storage layout is
+// implementation-local, so the canonical form is owned here. The caller never
+// sees individual fields: it stores one opaque checkpoint and the SDK
+// validates version, bounds, and digest on the way back in.
+
+fn secret_value(secret: &Secret) -> CborValue {
+    CborValue::Bytes(secret.0.to_vec())
+}
+
+fn optional_secret_value(secret: &Option<Secret>) -> CborValue {
+    match secret {
+        Some(secret) => CborValue::Bytes(secret.0.to_vec()),
+        None => CborValue::Null,
+    }
+}
+
+fn decode_secret(value: Option<&CborValue>) -> Result<Secret, Error> {
+    Ok(Secret(exact_32(value)?))
+}
+
+fn decode_optional_secret(value: Option<&CborValue>) -> Result<Option<Secret>, Error> {
+    match value {
+        Some(CborValue::Null) => Ok(None),
+        Some(CborValue::Bytes(bytes)) => {
+            Ok(Some(Secret(bytes.as_slice().try_into().map_err(|_| {
+                record_error(ErrorCode::InvalidRepresentation)
+            })?)))
+        }
+        _ => Err(record_error(ErrorCode::InvalidRepresentation)),
+    }
+}
+
+fn token_value(token: u128) -> CborValue {
+    CborValue::Bytes(token.to_be_bytes().to_vec())
+}
+
+fn decode_token(value: Option<&CborValue>) -> Result<u128, Error> {
+    let Some(CborValue::Bytes(bytes)) = value else {
+        return Err(record_error(ErrorCode::InvalidRepresentation));
+    };
+    let token: [u8; 16] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| record_error(ErrorCode::InvalidRepresentation))?;
+    Ok(u128::from_be_bytes(token))
+}
+
+fn exact_12(value: Option<&CborValue>) -> Result<[u8; 12], Error> {
+    let Some(CborValue::Bytes(bytes)) = value else {
+        return Err(record_error(ErrorCode::InvalidRepresentation));
+    };
+    bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| record_error(ErrorCode::InvalidRepresentation))
+}
+
+impl HybridSecrets {
+    pub(crate) fn encode_checkpoint(&self) -> Result<Vec<u8>, Error> {
+        let tree = encoding::WipedValue(CborValue::Map(BTreeMap::from([
+            (0, secret_value(&self.hybrid_root)),
+            (1, secret_value(&self.client_confirm_key)),
+            (2, CborValue::Bytes(self.client_confirm_nonce.to_vec())),
+            (3, secret_value(&self.session_accept_key)),
+        ])));
+        encoding::encode_at(&tree.0, &encoding::CHECKPOINT_LIMITS)
+    }
+
+    pub(crate) fn decode_checkpoint(bytes: &[u8]) -> Result<Self, Error> {
+        let decoded =
+            encoding::WipedValue(encoding::decode_at(bytes, &encoding::CHECKPOINT_LIMITS)?);
+        let CborValue::Map(map) = &decoded.0 else {
+            return Err(record_error(ErrorCode::InvalidRepresentation));
+        };
+        if map.len() != 4 {
+            return Err(record_error(ErrorCode::UnknownField));
+        }
+        Ok(Self {
+            hybrid_root: decode_secret(map.get(&0))?,
+            client_confirm_key: decode_secret(map.get(&1))?,
+            client_confirm_nonce: exact_12(map.get(&2))?,
+            session_accept_key: decode_secret(map.get(&3))?,
+        })
+    }
+}
+
+impl RatchetState {
+    /// Canonical, secret-bearing checkpoint form. Skipped records are sorted so
+    /// the encoding is deterministic; the sort borrows the map instead of
+    /// copying secrets, and the record tree wipes its payload copies on drop.
+    pub(crate) fn encode_checkpoint(&self) -> Result<Vec<u8>, Error> {
+        if self.skipped.len() > MAX_SKIPPED_KEYS {
+            return Err(record_error(ErrorCode::BoundExceeded));
+        }
+        let mut entries: Vec<_> = self.skipped.iter().collect();
+        entries.sort_by_key(|((dh, number), _)| (*dh, *number));
+        let mut skipped = encoding::WipedValue::array();
+        for ((dh, number), (secret, nonce)) in entries {
+            skipped.push(CborValue::Map(BTreeMap::from([
+                (0, CborValue::Bytes(dh.to_vec())),
+                (1, CborValue::Unsigned(u64::from(*number))),
+                (2, CborValue::Bytes(secret.0.to_vec())),
+                (3, CborValue::Bytes(nonce.to_vec())),
+            ])));
+        }
+        let tree = encoding::WipedValue(CborValue::Map(BTreeMap::from([
+            (0, CborValue::Bytes(self.session_context.to_vec())),
+            (1, secret_value(&self.root)),
+            (2, token_value(self.local_private.custody_token())),
+            (3, CborValue::Bytes(self.local_public.to_vec())),
+            (4, CborValue::Bytes(self.peer_public.to_vec())),
+            (5, optional_secret_value(&self.sending)),
+            (6, optional_secret_value(&self.receiving)),
+            (
+                7,
+                CborValue::Unsigned(match self.send_direction {
+                    Direction::InitiatorToResponder => 0,
+                    Direction::ResponderToInitiator => 1,
+                }),
+            ),
+            (8, CborValue::Unsigned(u64::from(self.pn))),
+            (9, CborValue::Unsigned(u64::from(self.ns))),
+            (10, CborValue::Unsigned(u64::from(self.nr))),
+            (11, skipped.take()),
+        ])));
+        encoding::encode_at(&tree.0, &encoding::CHECKPOINT_LIMITS)
+    }
+
+    /// Restores one checkpointed ratchet, refusing anything outside the
+    /// profile bounds before the state becomes reachable.
+    pub(crate) fn decode_checkpoint(bytes: &[u8]) -> Result<Self, Error> {
+        let decoded =
+            encoding::WipedValue(encoding::decode_at(bytes, &encoding::CHECKPOINT_LIMITS)?);
+        let CborValue::Map(map) = &decoded.0 else {
+            return Err(record_error(ErrorCode::InvalidRepresentation));
+        };
+        if map.len() != 12 {
+            return Err(record_error(ErrorCode::UnknownField));
+        }
+        let send_direction = match map.get(&7) {
+            Some(CborValue::Unsigned(0)) => Direction::InitiatorToResponder,
+            Some(CborValue::Unsigned(1)) => Direction::ResponderToInitiator,
+            _ => return Err(record_error(ErrorCode::InvalidRepresentation)),
+        };
+        let Some(CborValue::Array(entries)) = map.get(&11) else {
+            return Err(record_error(ErrorCode::InvalidRepresentation));
+        };
+        if entries.len() > MAX_SKIPPED_KEYS {
+            return Err(record_error(ErrorCode::BoundExceeded));
+        }
+        let mut skipped = HashMap::with_capacity(entries.len());
+        for entry in entries {
+            let CborValue::Map(record) = entry else {
+                return Err(record_error(ErrorCode::InvalidRepresentation));
+            };
+            if record.len() != 4 {
+                return Err(record_error(ErrorCode::UnknownField));
+            }
+            let dh = exact_32(record.get(&0))?;
+            let number = exact_u32(record.get(&1))?;
+            let secret = decode_secret(record.get(&2))?;
+            let nonce = exact_12(record.get(&3))?;
+            if skipped.insert((dh, number), (secret, nonce)).is_some() {
+                return Err(record_error(ErrorCode::InvalidRepresentation));
+            }
+        }
+        Ok(Self {
+            session_context: exact_32(map.get(&0))?,
+            root: decode_secret(map.get(&1))?,
+            local_private: SecretHandle::from_custody_token(decode_token(map.get(&2))?),
+            local_public: exact_32(map.get(&3))?,
+            peer_public: exact_32(map.get(&4))?,
+            sending: decode_optional_secret(map.get(&5))?,
+            receiving: decode_optional_secret(map.get(&6))?,
+            send_direction,
+            pn: exact_u32(map.get(&8))?,
+            ns: exact_u32(map.get(&9))?,
+            nr: exact_u32(map.get(&10))?,
+            skipped,
+        })
+    }
+
+    /// Direction this ratchet sends in, so a restored established session can
+    /// only be resumed in its original role.
+    pub(crate) const fn send_direction(&self) -> Direction {
+        self.send_direction
+    }
+}
+
 fn exact_32(value: Option<&CborValue>) -> Result<[u8; 32], Error> {
     let Some(CborValue::Bytes(bytes)) = value else {
         return Err(record_error(ErrorCode::InvalidRepresentation));
@@ -725,7 +920,7 @@ const fn record_error(code: ErrorCode) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{HybridSecrets, RatchetState};
+    use super::{HybridSecrets, RatchetState, Secret};
     use crate::{
         error::{Error, ErrorCode, Stage},
         provider::{AgreementProvider, RustCryptoProvider},
@@ -933,5 +1128,25 @@ mod tests {
             .receive(&provider, &custody, &delayed, None)
             .unwrap();
         assert_eq!(recovered, b"old-one");
+    }
+
+    #[test]
+    fn checkpoint_round_trips_beyond_the_generic_collection_bound() {
+        // A committed session legitimately carries more skipped keys than the
+        // generic deterministic-CBOR collection bound (64); the checkpoint
+        // bound is the protocol bound, so the snapshot must round-trip.
+        let (_, _, mut ratchet) = pair();
+        for index in 0..100u32 {
+            ratchet.skipped.insert(
+                ([index as u8; 32], index),
+                (
+                    Secret::new([index.wrapping_add(1) as u8; 32]),
+                    [index as u8; 12],
+                ),
+            );
+        }
+        let bytes = ratchet.encode_checkpoint().unwrap();
+        let restored = RatchetState::decode_checkpoint(&bytes).unwrap();
+        assert_eq!(restored, ratchet);
     }
 }

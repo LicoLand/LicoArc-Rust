@@ -745,7 +745,7 @@ fn non_exact_recovery_reads_keep_tentative_prekeys_fenced() {
         .unwrap();
     store.fail_next_cas_with_rollback(initial);
     let mut endpoint =
-        Endpoint::<Responder, _, _, _>::responder(line, RustCryptoProvider, custody, store)
+        Endpoint::<Responder, _, _, _>::resume(line, RustCryptoProvider, custody, store, 0)
             .unwrap();
 
     let error = endpoint
@@ -782,11 +782,12 @@ fn non_exact_recovery_reads_keep_tentative_prekeys_fenced() {
         .unwrap();
     let mut successor_store = successor_custody.store(EndpointState::responder());
     successor_store.fail_next_cas_with_rollback(competing);
-    let mut successor_endpoint = Endpoint::<Responder, _, _, _>::responder(
+    let mut successor_endpoint = Endpoint::<Responder, _, _, _>::resume(
         authority(),
         RustCryptoProvider,
         successor_custody,
         successor_store,
+        0,
     )
     .unwrap();
 

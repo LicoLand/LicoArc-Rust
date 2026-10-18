@@ -3,6 +3,8 @@
 use core::{fmt, marker::PhantomData};
 use std::collections::HashSet;
 
+use zeroize::Zeroize;
+
 use crate::error::{Error, ErrorCode, Stage};
 
 /// Largest integer that the authority permits for persisted generations.
@@ -237,6 +239,19 @@ impl Revision {
         self.0
     }
 
+    /// Reconstructs the generation one caller-owned durable backend recorded.
+    ///
+    /// A backend that survives a process boundary persists the generation as an
+    /// integer; this is the only supported way to present it back to the SDK
+    /// after a restart. Values above [`MAX_SAFE_INTEGER`] are refused because the
+    /// authority does not permit them.
+    pub fn from_value(value: u64) -> Result<Self, Error> {
+        if value > MAX_SAFE_INTEGER {
+            return Err(Error::terminal(ErrorCode::BoundExceeded, Stage::Validation));
+        }
+        Ok(Self(value))
+    }
+
     pub fn successor(self) -> Result<Self, Error> {
         if self.0 >= MAX_SAFE_INTEGER {
             return Err(Error::terminal(ErrorCode::BoundExceeded, Stage::Commit));
@@ -298,6 +313,13 @@ impl PendingId {
     pub const fn from_token(token: u128) -> Self {
         Self(token)
     }
+
+    /// Returns the nonsecret token a caller-owned durable backend persists and
+    /// presents back when a committed pending item is restored.
+    #[must_use]
+    pub const fn token(self) -> u128 {
+        self.0
+    }
 }
 
 impl fmt::Debug for PendingId {
@@ -349,6 +371,19 @@ impl PendingItem {
             return Err(Error::terminal(ErrorCode::BoundExceeded, Stage::Validation));
         }
         Ok(Self { id, kind })
+    }
+
+    /// Zeroizes the carried payload in place.
+    ///
+    /// Callers that accumulate pending items across a fallible boundary — for
+    /// example checkpoint decoding — hold them in a drop guard that wipes the
+    /// whole collection unless ownership is handed off successfully.
+    pub(crate) fn wipe(&mut self) {
+        match &mut self.kind {
+            PendingKind::Packet(payload)
+            | PendingKind::Effect(payload)
+            | PendingKind::Plaintext(payload) => payload.zeroize(),
+        }
     }
 
     #[must_use]
