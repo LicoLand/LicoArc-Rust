@@ -877,7 +877,7 @@ fn decode_cbor(input: &Value) -> Expected {
     let Ok(bytes) = decode_hex(source) else {
         return protocol_error("invalid-deterministic-cbor");
     };
-    match encoding::decode_detailed(&bytes) {
+    match encoding::decode_detailed(&bytes, &encoding::DEFAULT_LIMITS) {
         Ok(value) => result(json!({ "value": json_from_cbor(&value) })),
         Err(failure) => protocol_error(match failure {
             DecodeFailure::IndefiniteLength => "indefinite-length",

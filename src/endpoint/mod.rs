@@ -17,12 +17,16 @@ use crate::{
     state::{
         ApplicationEffects, AtomicState, Clock, Commit, CustodyRef, Ed25519Signing, KeyCustody,
         KeyMutation, MlDsa65Signing, MlKem768Private, MlKemEncapsulationEntropy, PacketCarrier,
-        PendingId, PendingItem, PendingKind, PlaintextReceiver, SecretHandle, StagedSecretHandle,
-        TrustFacts, Versioned, X25519Private, drive_pending, release_plaintext,
+        PendingId, PendingItem, PendingKind, PlaintextReceiver, Revision, SecretHandle,
+        StagedSecretHandle, TrustFacts, Versioned, X25519Private, drive_pending, release_plaintext,
     },
     transport::{self, TransportOutcome, TransportRequest},
 };
 
+mod checkpoint;
+pub use checkpoint::{
+    CheckpointIntegrityKey, EndpointCheckpoint, EndpointRestore, decode_endpoint_checkpoint,
+};
 mod sealed {
     pub trait Role {}
 }
@@ -322,10 +326,31 @@ impl fmt::Debug for ActivePrekey {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone)]
 pub struct EndpointState {
     phase: Phase,
+    /// The Line/Profile pair a checkpoint bound this state to. Fresh states
+    /// carry none; a checkpoint-decoded state carries the pair its own
+    /// checkpoint declared, so `resume` under a different Line is refused.
+    /// It is envelope metadata, not state content, so it takes no part in
+    /// state equality or the checkpoint body.
+    lineage: Option<CheckpointLineage>,
 }
+
+/// The Line/Profile pair a checkpoint bound its state to.
+#[derive(Clone, Copy, Eq, PartialEq)]
+pub(crate) struct CheckpointLineage {
+    pub(crate) line_id: [u8; 32],
+    pub(crate) profile_id: [u8; 32],
+}
+
+impl PartialEq for EndpointState {
+    fn eq(&self, other: &Self) -> bool {
+        self.phase == other.phase
+    }
+}
+
+impl Eq for EndpointState {}
 
 #[derive(Clone, Eq, PartialEq)]
 enum Phase {
@@ -374,6 +399,7 @@ impl EndpointState {
     pub const fn initiator() -> Self {
         Self {
             phase: Phase::InitiatorNew,
+            lineage: None,
         }
     }
 
@@ -384,6 +410,7 @@ impl EndpointState {
                 high_water: 0,
                 active: HashMap::new(),
             },
+            lineage: None,
         }
     }
 }
@@ -410,6 +437,13 @@ impl<R: Role, P, C, S> Endpoint<R, P, C, S> {
 }
 
 impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Responder, P, C, S> {
+    /// Opens a fresh responder endpoint on a pristine snapshot.
+    ///
+    /// The constructor accepts only the initial snapshot — the initial
+    /// revision, an empty prekey pool and no checkpoint lineage. Anything
+    /// beyond that is a restored snapshot and must enter through
+    /// [`Endpoint::resume`], which enforces the caller's independently
+    /// persisted generation floor and the checkpoint's Line/Profile binding.
     pub fn responder(
         line: VerifiedProtocolLine,
         provider: P,
@@ -418,7 +452,15 @@ impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Respond
     ) -> Result<Self, Error> {
         let current = store.load()?;
         ensure_live(current.state())?;
-        if !matches!(current.state().phase, Phase::ResponderReady { .. }) {
+        let pristine = matches!(
+            &current.state().phase,
+            Phase::ResponderReady { high_water, active }
+                if *high_water == 0 && active.is_empty()
+        );
+        if !pristine
+            || current.revision() != Revision::initial()
+            || current.state().lineage.is_some()
+        {
             return Err(transition_error());
         }
         Ok(Self {
@@ -509,6 +551,7 @@ impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Respond
                     high_water: pair_sequence,
                     active: next_active,
                 },
+                lineage: current.state().lineage,
             };
             commit_attempted = true;
             commit_with_mutations(
@@ -631,6 +674,7 @@ impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Respond
                 prekey_high_water: Some(*high_water),
                 capabilities: None,
             },
+            lineage: current.state().lineage,
         };
         let mut mutations = Vec::with_capacity(active.len().saturating_mul(2));
         for candidate in active.values() {
@@ -653,6 +697,13 @@ impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Respond
 }
 
 impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Initiator, P, C, S> {
+    /// Opens a fresh initiator endpoint on a pristine snapshot.
+    ///
+    /// The constructor accepts only the initial snapshot — the initial
+    /// revision, the `initiator-new` phase and no checkpoint lineage.
+    /// Anything beyond that is a restored snapshot and must enter through
+    /// [`Endpoint::resume`], which enforces the caller's independently
+    /// persisted generation floor and the checkpoint's Line/Profile binding.
     pub fn initiator(
         line: VerifiedProtocolLine,
         provider: P,
@@ -661,7 +712,10 @@ impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Initiat
     ) -> Result<Self, Error> {
         let current = store.load()?;
         ensure_live(current.state())?;
-        if !matches!(current.state().phase, Phase::InitiatorNew) {
+        if !matches!(current.state().phase, Phase::InitiatorNew)
+            || current.revision() != Revision::initial()
+            || current.state().lineage.is_some()
+        {
             return Err(transition_error());
         }
         Ok(Self {
@@ -777,6 +831,7 @@ impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Initiat
                     hybrid,
                     ratchet: Box::new(ratchet),
                 },
+                lineage: current.state().lineage,
             };
             commit_attempted = true;
             commit_with_mutations(
@@ -830,6 +885,7 @@ impl<P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoint<Initiat
                 prekey_high_water: None,
                 capabilities: None,
             },
+            lineage: current.state().lineage,
         };
         commit(&mut self.store, &current, next)?;
         Ok(())
@@ -926,6 +982,7 @@ impl<R: Role, P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoin
                     prekey_high_water: *prekey_high_water,
                     capabilities: capabilities.clone(),
                 },
+                lineage: current.state().lineage,
             };
             let mutations = bootstrap_private.as_ref().map_or_else(Vec::new, |staged| {
                 vec![
@@ -1015,6 +1072,7 @@ impl<R: Role, P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoin
                     prekey_high_water: *prekey_high_water,
                     capabilities: capabilities.clone(),
                 },
+                lineage: current.state().lineage,
             };
             let mutations = if rotated {
                 let staged = fresh_private.as_ref().ok_or_else(transition_error)?;
@@ -1076,6 +1134,7 @@ impl<R: Role, P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoin
                 prekey_high_water: *prekey_high_water,
                 capabilities: Some(Box::new(runtime)),
             },
+            lineage: current.state().lineage,
         };
         commit(&mut self.store, &current, next)
     }
@@ -1168,6 +1227,7 @@ impl<R: Role, P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoin
                 prekey_high_water: *prekey_high_water,
                 capabilities: Some(Box::new(next_runtime)),
             },
+            lineage: current.state().lineage,
         };
         let effect = capability_effect(&projections, flow.group_payload, transport_outcome)?;
         commit_with_pending(
@@ -1230,6 +1290,7 @@ impl<R: Role, P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoin
             &current,
             EndpointState {
                 phase: Phase::Deleted { prekey_high_water },
+                lineage: current.state().lineage,
             },
             mutations,
             Vec::new(),
