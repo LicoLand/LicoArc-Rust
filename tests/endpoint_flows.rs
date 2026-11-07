@@ -594,8 +594,8 @@ fn authority() -> licoarc::VerifiedProtocolLine {
 fn synthetic_custody_rejects_missing_stale_and_cross_purpose_handles() {
     let mut custody = TestCustody::default();
     let signing = custody.signing_handles(11);
-    let staged_x25519 = custody.stage_x25519(71, [71; 32]);
-    let staged_ml_kem = custody.stage_ml_kem_768(72, [72; 64]);
+    let staged_x25519 = custody.stage_x25519(71, random_secret());
+    let staged_ml_kem = custody.stage_ml_kem_768(72, random_secret());
 
     assert!(
         custody
@@ -625,7 +625,7 @@ fn synthetic_custody_rejects_missing_stale_and_cross_purpose_handles() {
 
     let lifecycle = custody.shared_lifecycle();
     let mut store = custody.store(());
-    let later_valid = custody.stage_x25519(75, [75; 32]);
+    let later_valid = custody.stage_x25519(75, random_secret());
     let bad_batch = Commit::bounded(
         (),
         vec![
@@ -705,8 +705,8 @@ fn synthetic_custody_rejects_missing_stale_and_cross_purpose_handles() {
         "a losing CAS must not apply handle deletion"
     );
 
-    let stale_x25519 = custody.stage_x25519(73, [73; 32]);
-    let stale_ml_kem = custody.stage_ml_kem_768(74, [74; 64]);
+    let stale_x25519 = custody.stage_x25519(73, random_secret());
+    let stale_ml_kem = custody.stage_ml_kem_768(74, random_secret());
     custody.abort_x25519(&stale_x25519);
     custody.abort_ml_kem_768(&stale_ml_kem);
     assert!(
@@ -731,8 +731,8 @@ fn non_exact_recovery_reads_keep_tentative_prekeys_fenced() {
     let line = authority();
     let mut custody = TestCustody::default();
     let (responder_identity, signing) = identity(&mut custody, 41);
-    let x25519 = custody.stage_x25519(61, [61; 32]);
-    let ml_kem = custody.stage_ml_kem_768(62, [62; 64]);
+    let x25519 = custody.stage_x25519(61, random_secret());
+    let ml_kem = custody.stage_ml_kem_768(62, random_secret());
     let lifecycle = custody.shared_lifecycle();
 
     let initial = Versioned::initial(EndpointState::responder());
@@ -773,8 +773,8 @@ fn non_exact_recovery_reads_keep_tentative_prekeys_fenced() {
 
     let mut successor_custody = TestCustody::default();
     let (successor_identity, successor_signing) = identity(&mut successor_custody, 51);
-    let successor_x25519 = successor_custody.stage_x25519(71, [71; 32]);
-    let successor_ml_kem = successor_custody.stage_ml_kem_768(72, [72; 64]);
+    let successor_x25519 = successor_custody.stage_x25519(71, random_secret());
+    let successor_ml_kem = successor_custody.stage_ml_kem_768(72, random_secret());
     let successor_lifecycle = successor_custody.shared_lifecycle();
     let competing = Commit::bounded(EndpointState::responder(), Vec::new(), Vec::new(), 0, 0)
         .unwrap()
@@ -829,8 +829,8 @@ fn definite_and_committed_cas_errors_have_distinct_handle_outcomes() {
 
     let mut rejected_custody = TestCustody::default();
     let (rejected_identity, rejected_signing) = identity(&mut rejected_custody, 41);
-    let rejected_x25519 = rejected_custody.stage_x25519(61, [61; 32]);
-    let rejected_ml_kem = rejected_custody.stage_ml_kem_768(62, [62; 64]);
+    let rejected_x25519 = rejected_custody.stage_x25519(61, random_secret());
+    let rejected_ml_kem = rejected_custody.stage_ml_kem_768(62, random_secret());
     let rejected_lifecycle = rejected_custody.shared_lifecycle();
     let mut rejected_store = rejected_custody.store(EndpointState::responder());
     rejected_store.fail_next_cas_before_commit();
@@ -872,8 +872,8 @@ fn definite_and_committed_cas_errors_have_distinct_handle_outcomes() {
 
     let mut committed_custody = TestCustody::default();
     let (committed_identity, committed_signing) = identity(&mut committed_custody, 51);
-    let committed_x25519 = committed_custody.stage_x25519(71, [71; 32]);
-    let committed_ml_kem = committed_custody.stage_ml_kem_768(72, [72; 64]);
+    let committed_x25519 = committed_custody.stage_x25519(71, random_secret());
+    let committed_ml_kem = committed_custody.stage_ml_kem_768(72, random_secret());
     let committed_lifecycle = committed_custody.shared_lifecycle();
     let mut committed_store = committed_custody.store(EndpointState::responder());
     committed_store.fail_next_cas_after_commit();
@@ -912,20 +912,20 @@ fn handshake_and_confirmation() {
     let provider = RustCryptoProvider;
     let mut initiator_custody = TestCustody::default();
     let (initiator_identity, initiator_signing) = identity(&mut initiator_custody, 11);
-    let initiator_first_private = initiator_custody.stage_x25519(71, [71; 32]);
-    let initiator_retry_private = initiator_custody.stage_x25519(99, [99; 32]);
-    let initiator_receive_private = initiator_custody.stage_x25519(82, [82; 32]);
-    let initiator_entropy = initiator_custody.ml_kem_entropy(72, [72; 32]);
-    let initiator_retry_entropy = initiator_custody.ml_kem_entropy(98, [98; 32]);
+    let initiator_first_private = initiator_custody.stage_x25519(71, random_secret());
+    let initiator_retry_private = initiator_custody.stage_x25519(99, random_secret());
+    let initiator_receive_private = initiator_custody.stage_x25519(82, random_secret());
+    let initiator_entropy = initiator_custody.ml_kem_entropy(72, random_secret());
+    let initiator_retry_entropy = initiator_custody.ml_kem_entropy(98, random_secret());
     let initiator_store = initiator_custody.store(EndpointState::initiator());
     let initiator_lifecycle = initiator_custody.shared_lifecycle();
     let mut responder_custody = TestCustody::default();
     let (responder_identity, responder_signing) = identity(&mut responder_custody, 41);
-    let responder_prekey_x25519 = responder_custody.stage_x25519(61, [61; 32]);
-    let responder_prekey_ml_kem = responder_custody.stage_ml_kem_768(62, [62; 64]);
-    let responder_spare_x25519 = responder_custody.stage_x25519(63, [63; 32]);
-    let responder_spare_ml_kem = responder_custody.stage_ml_kem_768(64, [64; 64]);
-    let responder_send_private = responder_custody.stage_x25519(81, [81; 32]);
+    let responder_prekey_x25519 = responder_custody.stage_x25519(61, random_secret());
+    let responder_prekey_ml_kem = responder_custody.stage_ml_kem_768(62, random_secret());
+    let responder_spare_x25519 = responder_custody.stage_x25519(63, random_secret());
+    let responder_spare_ml_kem = responder_custody.stage_ml_kem_768(64, random_secret());
+    let responder_send_private = responder_custody.stage_x25519(81, random_secret());
     let responder_store = responder_custody.store(EndpointState::responder());
     let responder_lifecycle = responder_custody.shared_lifecycle();
     let trusted_initiator = trusted(&line, &initiator_identity);
@@ -1235,13 +1235,13 @@ fn complete_capability_flow() {
     let provider = RustCryptoProvider;
     let mut initiator_custody = TestCustody::default();
     let (initiator_identity, initiator_signing) = identity(&mut initiator_custody, 11);
-    let initiator_first_private = initiator_custody.stage_x25519(71, [71; 32]);
-    let initiator_entropy = initiator_custody.ml_kem_entropy(72, [72; 32]);
+    let initiator_first_private = initiator_custody.stage_x25519(71, random_secret());
+    let initiator_entropy = initiator_custody.ml_kem_entropy(72, random_secret());
     let initiator_store = initiator_custody.store(EndpointState::initiator());
     let mut responder_custody = TestCustody::default();
     let (responder_identity, responder_signing) = identity(&mut responder_custody, 41);
-    let responder_prekey_x25519 = responder_custody.stage_x25519(61, [61; 32]);
-    let responder_prekey_ml_kem = responder_custody.stage_ml_kem_768(62, [62; 64]);
+    let responder_prekey_x25519 = responder_custody.stage_x25519(61, random_secret());
+    let responder_prekey_ml_kem = responder_custody.stage_ml_kem_768(62, random_secret());
     let responder_store = responder_custody.store(EndpointState::responder());
     let trusted_initiator = trusted(&line, &initiator_identity);
     let trusted_responder = trusted(&line, &responder_identity);
@@ -1514,4 +1514,11 @@ fn complete_capability_flow() {
         ErrorCode::InvalidTransition
     );
     assert_eq!(initiator.into_store().load().unwrap().revision().value(), 4);
+}
+
+/// A fresh random private secret for synthetic test custody material.
+fn random_secret<const N: usize>() -> [u8; N] {
+    let mut bytes = [0_u8; N];
+    getrandom::fill(&mut bytes).expect("synthetic secret entropy");
+    bytes
 }

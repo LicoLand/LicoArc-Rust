@@ -444,7 +444,8 @@ impl TrustFacts for FixedTrust {
 }
 
 fn integrity() -> CheckpointIntegrityKey {
-    CheckpointIntegrityKey::from_secret_bytes([0xC9; 32])
+    static BYTES: std::sync::OnceLock<[u8; 32]> = std::sync::OnceLock::new();
+    CheckpointIntegrityKey::from_secret_bytes(*BYTES.get_or_init(random_secret))
 }
 
 /// The caller's endpoint identifier bound into every test checkpoint.
@@ -520,8 +521,8 @@ fn establish() -> Session {
             &responder_identity,
             &responder_signing,
             1,
-            responder_custody.stage_x25519(0x31, [0x31; 32]),
-            responder_custody.stage_ml_kem_768(0x32, [0x32; 64]),
+            responder_custody.stage_x25519(0x31, random_secret()),
+            responder_custody.stage_ml_kem_768(0x32, random_secret()),
             10,
             100,
         )
@@ -544,8 +545,8 @@ fn establish() -> Session {
             &initiator_signing,
             bundle,
             &clock,
-            initiator_custody.stage_x25519(0x71, [0x71; 32]),
-            initiator_custody.entropy(0x72, [0x72; 32]),
+            initiator_custody.stage_x25519(0x71, random_secret()),
+            initiator_custody.entropy(0x72, random_secret()),
         )
         .unwrap();
     let accept = responder
@@ -703,7 +704,9 @@ fn a_restored_session_continues_the_ratchet_in_the_same_role() {
     // The responder receives a new ratchet public, so it too performs a DH
     // transition and needs a fresh private; authentication succeeds only if
     // the restored initiator chain was exactly the committed one.
-    let responder_receive = session.responder_custody.stage_x25519(0xD0, [0xD0; 32]);
+    let responder_receive = session
+        .responder_custody
+        .stage_x25519(0xD0, random_secret());
     let received = session
         .responder
         .receive_record(&carrier.packet, Some(responder_receive))
@@ -804,7 +807,7 @@ fn checkpoints_refuse_tampering_truncation_unknown_versions_and_capabilities() {
     );
 
     // The right bytes under the wrong integrity key are refused too.
-    let wrong = CheckpointIntegrityKey::from_secret_bytes([0xC8; 32]);
+    let wrong = CheckpointIntegrityKey::from_secret_bytes(random_secret());
     let refused =
         decode_endpoint_checkpoint(&provider, &session.line, &checkpoint, &wrong, scope())
             .unwrap_err();
@@ -1180,4 +1183,11 @@ fn a_checkpoint_refuses_transplant_to_another_endpoint_scope() {
         restored.state(),
         &session.initiator_store.load().unwrap().state().clone()
     );
+}
+
+/// A fresh random private secret for synthetic test custody material.
+fn random_secret<const N: usize>() -> [u8; N] {
+    let mut bytes = [0_u8; N];
+    getrandom::fill(&mut bytes).expect("synthetic secret entropy");
+    bytes
 }

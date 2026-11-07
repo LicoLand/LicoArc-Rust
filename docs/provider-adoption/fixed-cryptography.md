@@ -42,7 +42,7 @@ Uniform confirmation outside this adapter decides handshake acceptance.
 The focused provider contract suite binds standard SHA-256, RFC 5869,
 RFC 4231, RFC 8439, RFC 7748, and RFC 8032 vectors. It also binds deterministic
 ML-KEM-768 encapsulation/decapsulation, mutated-ciphertext implicit rejection,
-ML-DSA-65 sign/verify, the public repeated-hint negative construction, exact
+ML-DSA-65 sign/verify over a runtime-generated seed, the public repeated-hint negative construction, exact
 sizes, exact direct pins and features, and the local unsafe-code lint. These
 tests verify this adoption boundary; they do not make a protocol-conformance,
 interoperability, hardware-custody, audit, or publication claim.

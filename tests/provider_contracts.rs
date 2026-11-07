@@ -144,8 +144,10 @@ fn ed25519_matches_rfc_8032_and_is_strict_about_weak_keys() {
 #[test]
 fn ml_kem_768_round_trips_and_implicitly_rejects_mutated_ciphertext() {
     let provider = RustCryptoProvider;
-    let seed = [0x42; 64];
-    let entropy = [0x24; 32];
+    let mut seed = [0_u8; 64];
+    let mut entropy = [0_u8; 32];
+    getrandom::fill(&mut seed).expect("synthetic seed entropy");
+    getrandom::fill(&mut entropy).expect("synthetic entropy");
     let public = provider.ml_kem_768_public(&seed);
     assert_eq!(public.len(), ML_KEM_768_PUBLIC_KEY_BYTES);
     let (ciphertext, shared) = provider
@@ -178,7 +180,8 @@ fn ml_dsa_65_round_trips_and_rejects_repeated_hint_indices() {
     const K: usize = 6;
 
     let provider = RustCryptoProvider;
-    let seed = [0x5a; 32];
+    let mut seed = [0_u8; 32];
+    getrandom::fill(&mut seed).expect("synthetic seed entropy");
     let message = b"synthetic ML-DSA-65 provider contract";
     let public = provider.ml_dsa_65_public(&seed);
     let mut signature = provider.ml_dsa_65_sign(&seed, message);
