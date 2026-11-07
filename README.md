@@ -1,6 +1,6 @@
 # LicoArc Rust
 
-LicoArc Rust is a private, independent safe-Rust implementation of the exact
+LicoArc Rust is an independent safe-Rust implementation of the exact
 current Candidate/COMPLETE stable-core v1 input. It admits only an explicitly
 supplied content-addressed authority bundle, exposes sealed Initiator and
 Responder Endpoints, implements the hybrid handshake and classic Double

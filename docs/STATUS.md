@@ -59,11 +59,16 @@ verification does not claim publication, interoperability, or external audit.
 
 ## Release
 
-The crate is released on crates.io as `licoarc`, starting at 0.1.0, from `licoarc-v<version>` tags on the default branch through the repository's Publish workflow. No Protocol Line publication, deployment, or hosted operation is claimed.
-publication, deployment, or hosted operation is claimed.
+No crate release has been published yet. The initial `licoarc` 0.1.0 upload
+to crates.io is made manually from the `licoarc-v0.1.0` tag commit, as
+crates.io requires before Trusted Publishing can be configured; later versions
+are published from `licoarc-v<version>` tags on the default branch by the
+repository's Publish workflow. Each published version is recorded here with its
+source commit and checksum. No Protocol Line publication, deployment, or hosted
+operation is claimed.
 
 ## Support
 
-Support remains unclaimed. Protocol Line and crate publication, product
-integration, interoperability, device admission, external audit, deployment,
-and hosted operation remain separate and unmet.
+Support remains unclaimed. Protocol Line publication, product integration,
+interoperability, device admission, external audit, deployment, and hosted
+operation remain separate and unmet.
