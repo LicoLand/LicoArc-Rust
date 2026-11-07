@@ -59,7 +59,7 @@ verification does not claim publication, interoperability, or external audit.
 
 ## Release
 
-No source tag, crate publication, package publication, Protocol Line
+The crate is released on crates.io as `licoarc`, starting at 0.1.0, from `licoarc-v<version>` tags on the default branch through the repository's Publish workflow. No Protocol Line publication, deployment, or hosted operation is claimed.
 publication, deployment, or hosted operation is claimed.
 
 ## Support
