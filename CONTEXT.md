@@ -13,7 +13,9 @@ This repository is an implementation workspace, not a protocol authority.
 - Build and test output is local and disposable.
 - Implementation, verification, release, support, and hosted operation remain
   separate claims.
-- The crate is published on crates.io as `licoarc` from `licoarc-v<version>` tags on the default branch by the repository's Publish workflow; publishing the crate publishes no Protocol Line.
+- Crate releases go to crates.io as `licoarc` only from `licoarc-v<version>`
+  tags on the default branch; `docs/STATUS.md` records each release that has
+  actually happened. Publishing the crate publishes no Protocol Line.
 - Authority bytes are explicit, read-only, content-addressed caller input; the
   repository never searches for a sibling checkout or a mutable latest value.
 - Snapshot provenance, Protocol Line content identity, and protection Profile

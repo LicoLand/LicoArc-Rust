@@ -27,7 +27,7 @@ handles with the associated state transition.
 - defining or translating protocol meaning;
 - reusing TypeScript or Go protocol execution;
 - operating a Station or hosted Network;
-- publishing a crate, Protocol Line, package, deployment, or support claim;
+- publishing a Protocol Line, package, deployment, or support claim;
 - claiming formal security proof, interoperability, device admission, external
   audit, product integration, hardware custody, physical erasure, or
   malicious-store rollback protection.
