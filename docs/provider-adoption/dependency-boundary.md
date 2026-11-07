@@ -1,6 +1,6 @@
 # Dependency Safety Boundary
 
-`unsafe_code = "forbid"` applies to the `licoarc-rust` crate and its local
+`unsafe_code = "forbid"` applies to the `licoarc` crate and its local
 targets. It does not lint dependency implementations, procedural macros, or
 build-time code.
 

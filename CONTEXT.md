@@ -5,7 +5,7 @@ This repository is an implementation workspace, not a protocol authority.
 
 ## Invariants
 
-- The repository owner is `licoarc-rust`.
+- The repository owner is `licoarc`.
 - LicoArc is the sole authority for Lico Arc Protocol meaning.
 - Rust code may not mint identifiers, patch wire semantics, create a
   translation path, or use another language implementation as a behavioral

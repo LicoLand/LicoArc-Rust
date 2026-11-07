@@ -1,15 +1,14 @@
 [package]
-name = "licoarc-rust"
+name = "licoarc"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
-publish = false
-license = "GPL-3.0-or-later"
+license = "Apache-2.0"
 description = "Independent safe-Rust implementation of the current Lico Arc stable-core Candidate."
-
-[lib]
-name = "licoarc"
-path = "src/lib.rs"
+repository = "https://github.com/LicoLand/LicoArc-Rust"
+readme = "README.md"
+keywords = ["licoarc", "protocol", "cryptography", "post-quantum"]
+categories = ["cryptography", "network-programming"]
 
 [dependencies]
 chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["zeroize"] }
