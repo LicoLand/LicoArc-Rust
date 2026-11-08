@@ -59,13 +59,17 @@ verification does not claim publication, interoperability, or external audit.
 
 ## Release
 
-No crate release has been published yet. The initial `licoarc` 0.1.0 upload
-to crates.io is made manually from the `licoarc-v0.1.0` tag commit, as
-crates.io requires before Trusted Publishing can be configured; later versions
-are published from `licoarc-v<version>` tags on the default branch by the
-repository's Publish workflow. Each published version is recorded here with its
-source commit and checksum. No Protocol Line publication, deployment, or hosted
-operation is claimed.
+The initial `licoarc` 0.1.0 upload to crates.io was made manually from the
+`licoarc-v0.1.0` tag commit, as crates.io requires before Trusted Publishing
+can be configured; later versions are published from `licoarc-v<version>`
+tags on the default branch by the repository's Publish workflow. Each
+published version is recorded here with its source commit and checksum.
+
+| Version | Source commit | crates.io checksum (SHA-256) |
+| --- | --- | --- |
+| 0.1.0 | `d6e4e95b6e03ba48576ede40de774cf2a3133506` | `c34688a9ebd9975271274ae8572b96f5b5560dd23ae6f9d1ebebead35d8f4a02` |
+
+No Protocol Line publication, deployment, or hosted operation is claimed.
 
 ## Support
 
