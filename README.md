@@ -8,7 +8,8 @@ Ratchet, and composes all eight mandatory capabilities through caller-owned
 purpose-specific opaque secret handles and atomic state, handle-lifecycle, and
 effect boundaries.
 
-LicoArc remains the sole authority for protocol semantics. This repository is
+LicoArc remains the sole authority for protocol semantics; this crate does not
+mint identifiers, patch wire semantics, or translate protocol meaning. It is
 not an executable or published Protocol Line and makes no formal security,
 deployment, interoperability, audit, device, operation, or support claim.
 Opaque handles keep caller-supplied signing, X25519, ML-KEM private-key, and
@@ -37,5 +38,4 @@ complete registry executes 212 cases across 29 operation IDs exactly once and
 requires every incomplete, skipped, unmapped, duplicate, and surplus counter to
 remain zero.
 
-See `PRODUCT.md`, `CONTEXT.md`, and `docs/STATUS.md` for the canonical boundary
-and current status.
+See `docs/STATUS.md` for the release record and current status.

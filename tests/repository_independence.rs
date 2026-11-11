@@ -10,8 +10,6 @@ fn dependency_graph_has_no_external_implementation_link() {
 #[test]
 fn documentation_facts_are_consistent() {
     let facts = [
-        include_str!("../PRODUCT.md"),
-        include_str!("../CONTEXT.md"),
         include_str!("../README.md"),
         include_str!("../SECURITY.md"),
         include_str!("../docs/STATUS.md"),

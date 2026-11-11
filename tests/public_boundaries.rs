@@ -8,7 +8,7 @@ use licoarc::{
         ApplicationEffects, AtomicState, Commit, PacketCarrier, PendingId, PendingItem, Revision,
         Versioned, drive_pending,
     },
-    transport::TransportRequest,
+    transport::ClientFrame,
 };
 
 #[test]
@@ -66,33 +66,10 @@ fn content_bearing_debug_surfaces_are_redacted() {
         attachment_id: None,
         attachments: Vec::new(),
     };
-    let request = TransportRequest {
-        scheme: "https",
-        tls_version: "1.3",
-        tls_cipher_suite: "TLS_CHACHA20_POLY1305_SHA256",
-        certificate_chain_valid: true,
-        http_version: "2",
-        renegotiation: false,
-        method: "POST",
-        path: std::str::from_utf8(canary).unwrap(),
-        query_present: false,
-        fragment_present: false,
-        early_data: false,
-        name_validated: true,
-        authority_present: true,
-        header_names_lowercase: true,
-        header_bytes: 0,
-        operation_id: Some([3; 16]),
-        operation_id_canonical: true,
-        media_type: "application/licoarc-transport+cbor",
-        media_type_parameters: false,
-        content_length: Some(canary.len()),
-        content_length_canonical: true,
-        transfer_encoding: false,
-        content_encoding_identity: true,
-        trailers: false,
-        streaming: false,
-        body: canary,
+    let request = ClientFrame::Send {
+        request_id: 7,
+        handle: [0; 32],
+        packet: canary.to_vec(),
     };
     let group = GroupState {
         group_id: [4; 32],

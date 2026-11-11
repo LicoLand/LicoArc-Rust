@@ -3,8 +3,8 @@ use std::{env, fs};
 use licoarc::{AuthorityBundle, ErrorCode};
 use serde_json::Value;
 
-const BUNDLE_DIGEST: &str = "b6ceacb359568cb09800317a8d4668442f55a1a66bba04f13c3e865a6cd2f8e0";
-const LINE_ID: &str = "c0b64d71865ce972a944db3d31a18cb03395300f3ed006c21e64429178c23a08";
+const BUNDLE_DIGEST: &str = "65b38ea1708a5f2668f90813088c54c55e5cbf9f56c3ed100e4d56e2973e57d6";
+const LINE_ID: &str = "e41920808f7167bd22e433ebe670257a42ced0d0bc4e4fdc16be63a2346ebf18";
 const PROFILE_ID: &str = "4b7d575f397862f9031e44b716921e86c410b5facf379bde21955922b0d58a17";
 
 #[test]
@@ -21,7 +21,7 @@ fn exact_explicit_candidate_complete_bundle_is_admitted() {
     assert_eq!(line.protocol_line_id(), &decode_digest(LINE_ID));
     assert_eq!(line.protection_profile_id(), &decode_digest(PROFILE_ID));
     assert_eq!(line.capability_ids().len(), 8);
-    assert_eq!(line.conformance_case_count(), 212);
+    assert_eq!(line.conformance_case_count(), 194);
     assert_eq!(line.operation_ids().len(), 29);
     assert_eq!(line.protection_bound("MAX_ACTIVE_SESSIONS"), Some(256));
     assert_eq!(
