@@ -47,9 +47,11 @@ sizes, exact direct pins and features, and the local unsafe-code lint. These
 tests verify this adoption boundary; they do not make a protocol-conformance,
 interoperability, hardware-custody, audit, or publication claim.
 
-All eight cryptographic crates are dual-licensed Apache-2.0 OR MIT and declare
-an MSRV no greater than this crate's Rust 1.95 requirement. Version or feature
-changes require a new locked graph review and the focused provider suite.
+Six of the eight cryptographic crates are dual-licensed Apache-2.0 OR MIT;
+`ed25519-dalek` and `x25519-dalek` are BSD-3-Clause, which is equally
+permissive for this crate's Apache-2.0 distribution. All eight declare an MSRV
+no greater than this crate's Rust 1.95 requirement. Version or feature changes
+require a new locked graph review and the focused provider suite.
 
 ## ML-DSA advisory review
 

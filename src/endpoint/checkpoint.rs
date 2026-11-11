@@ -610,7 +610,7 @@ fn encode_phase(state: &EndpointState) -> Result<CborValue, Error> {
         } => {
             if capabilities.is_some() {
                 // No canonical form is defined for the optional capability
-                // runtime yet; refusing is the only honest answer.
+                // runtime yet, so a checkpoint carrying one is refused.
                 return Err(Error::terminal(
                     ErrorCode::UnsupportedDefinition,
                     Stage::Representation,

@@ -6,7 +6,6 @@ use std::{
 
 use licoarc::{
     AuthorityBundle, Error, ErrorCode, Stage,
-    encoding::{self, CborValue},
     endpoint::{
         CapabilityRuntime, CompleteCapabilityFlow, Endpoint, EndpointState, IdentityPublic,
         IdentitySigningHandles, Initiator, Responder, TrustedIdentity,
@@ -29,7 +28,7 @@ use licoarc::{
         PendingId, PlaintextReceiver, Revision, SecretHandle, StagedSecretHandle, TrustFacts,
         Versioned, X25519Private,
     },
-    transport::{TransportOutcome, TransportRequest},
+    transport::TransportOutcome,
 };
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -1399,37 +1398,7 @@ fn complete_capability_flow() {
         attachment_id: None,
         attachments: Vec::new(),
     };
-    let claim = CborValue::Map(BTreeMap::from([(0, CborValue::Unsigned(1))]));
-    let body = encoding::encode(&claim).unwrap();
-    let path = format!("/v1/handles/{}/claim", "A".repeat(43));
-    let transport = TransportRequest {
-        scheme: "https",
-        tls_version: "1.3",
-        tls_cipher_suite: "TLS_CHACHA20_POLY1305_SHA256",
-        certificate_chain_valid: true,
-        http_version: "2",
-        renegotiation: false,
-        method: "POST",
-        path: &path,
-        query_present: false,
-        fragment_present: false,
-        early_data: false,
-        name_validated: true,
-        authority_present: true,
-        header_names_lowercase: true,
-        header_bytes: 128,
-        operation_id: Some([13; 16]),
-        operation_id_canonical: true,
-        media_type: "application/licoarc-transport+cbor",
-        media_type_parameters: false,
-        content_length: Some(body.len()),
-        content_length_canonical: true,
-        transfer_encoding: false,
-        content_encoding_identity: true,
-        trailers: false,
-        streaming: false,
-        body: &body,
-    };
+    let transport_outcome = TransportOutcome::Accepted;
     let confirmation = EndpointConfirmation {
         confirmation_id: [14; 16],
         confirmed_message_ids: vec![message.id],
@@ -1470,8 +1439,7 @@ fn complete_capability_flow() {
                 current_finality: FinalityState::Pending,
                 expected_result_digest: None,
                 attachment_complete: true,
-                transport_request: &transport,
-                transport_status: 202,
+                transport_outcome,
             },
             &capability_clock,
         )
@@ -1504,8 +1472,7 @@ fn complete_capability_flow() {
                     current_finality: FinalityState::Pending,
                     expected_result_digest: None,
                     attachment_complete: true,
-                    transport_request: &transport,
-                    transport_status: 202,
+                    transport_outcome,
                 },
                 &capability_clock
             )

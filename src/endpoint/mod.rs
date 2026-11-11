@@ -20,7 +20,7 @@ use crate::{
         PendingId, PendingItem, PendingKind, PlaintextReceiver, Revision, SecretHandle,
         StagedSecretHandle, TrustFacts, Versioned, X25519Private, drive_pending, release_plaintext,
     },
-    transport::{self, TransportOutcome, TransportRequest},
+    transport::TransportOutcome,
 };
 
 mod checkpoint;
@@ -292,8 +292,7 @@ pub struct CompleteCapabilityFlow<'a> {
     pub current_finality: FinalityState,
     pub expected_result_digest: Option<[u8; 32]>,
     pub attachment_complete: bool,
-    pub transport_request: &'a TransportRequest<'a>,
-    pub transport_status: u16,
+    pub transport_outcome: TransportOutcome,
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -1208,8 +1207,7 @@ impl<R: Role, P: Provider, C: KeyCustody, S: AtomicState<EndpointState>> Endpoin
             flow.expected_result_digest,
             flow.attachment_complete,
         )?;
-        transport::validate_endpoint_request(flow.transport_request)?;
-        let transport_outcome = transport::classify_status(flow.transport_status)?;
+        let transport_outcome = flow.transport_outcome;
 
         let next_runtime = CapabilityRuntime {
             governance,

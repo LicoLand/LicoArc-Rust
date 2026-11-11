@@ -1,13 +1,5 @@
 # LicoArc Rust Status
 
-Status dimensions are reported independently.
-
-## Intent
-
-The approved local intent is an independent safe-Rust implementation of the
-exact current Candidate/COMPLETE stable-core v1 input. LicoArc remains the sole
-protocol authority.
-
 ## Implementation
 
 - Rust 1.95 and edition 2024 admit only the exact explicit bundle and verify its
@@ -29,7 +21,7 @@ protocol authority.
   handles; uncertain commit results are resolved from stored revision/state or
   leave the same handles fenced for caller recovery.
 - Foundation, Governance, Identity, Pairwise Protection, Generic Messaging,
-  Reliable Exchange, Group Collaboration, and HTTPS
+  Reliable Exchange, Group Collaboration, and Mailbox
   Transport use bounded deterministic reducers and caller-owned state/effects.
 - The manifest-derived production registry executes 212/212 cases through all
   29 operation IDs with 8/8 capability coverage and zero incomplete, skipped,

@@ -15,7 +15,7 @@ use licoarc::{
     messaging::{self, Message, MessageKind},
     provider::RustCryptoProvider,
     reliable,
-    transport::{self, Operation},
+    transport::{ClientFrame, StationFrame, TransportOutcome},
 };
 use serde_json::json;
 
@@ -237,83 +237,101 @@ fn reliable_retry_preserves_packet_identity_and_lifetime_bounds() {
 }
 
 #[test]
-fn transport_control_records_validate_operation_specific_semantics() {
-    let claim = CborValue::Map(BTreeMap::from([(0, CborValue::Unsigned(64))]));
-    transport::validate_control_record(Operation::Claim, &claim).unwrap();
-    let body = licoarc::encoding::encode(&claim).unwrap();
-    let path = format!("/v1/handles/{}/claim", "A".repeat(43));
-    let request = transport::TransportRequest {
-        scheme: "https",
-        tls_version: "1.3",
-        tls_cipher_suite: "TLS_AES_128_GCM_SHA256",
-        certificate_chain_valid: true,
-        http_version: "2",
-        renegotiation: false,
-        method: "POST",
-        path: &path,
-        query_present: false,
-        fragment_present: false,
-        early_data: false,
-        name_validated: true,
-        authority_present: true,
-        header_names_lowercase: true,
-        header_bytes: 256,
-        operation_id: Some([1; 16]),
-        operation_id_canonical: true,
-        media_type: "application/licoarc-transport+cbor",
-        media_type_parameters: false,
-        content_length: Some(body.len()),
-        content_length_canonical: true,
-        transfer_encoding: false,
-        content_encoding_identity: true,
-        trailers: false,
-        streaming: false,
-        body: &body,
+fn mailbox_frames_round_trip_through_the_closed_grammar() {
+    let hello = ClientFrame::Hello {
+        device_key: [7; 32],
+        signature: [8; 64],
     };
-    transport::validate_endpoint_request(&request).unwrap();
-
-    let mut malformed = request;
-    malformed.body = &[0xa0];
-    malformed.content_length = Some(1);
     assert_eq!(
-        transport::validate_endpoint_request(&malformed)
-            .unwrap_err()
-            .code,
-        ErrorCode::UnknownField
+        ClientFrame::decode(&hello.encode().unwrap()).unwrap(),
+        hello
     );
-    let over_bound = CborValue::Map(BTreeMap::from([(0, CborValue::Unsigned(65))]));
+    let send = ClientFrame::Send {
+        request_id: 42,
+        handle: [9; 32],
+        packet: vec![0xaa; 64],
+    };
+    assert_eq!(ClientFrame::decode(&send.encode().unwrap()).unwrap(), send);
+    let ack = ClientFrame::Ack {
+        delivery_sequence: 9,
+    };
+    assert_eq!(ClientFrame::decode(&ack.encode().unwrap()).unwrap(), ack);
+
+    let challenge = StationFrame::Challenge { nonce: [1; 32] };
     assert_eq!(
-        transport::validate_control_record(Operation::Claim, &over_bound)
-            .unwrap_err()
-            .code,
-        ErrorCode::BoundExceeded
+        StationFrame::decode(&challenge.encode().unwrap()).unwrap(),
+        challenge
+    );
+    let ready = StationFrame::Ready {
+        mailbox_id: [2; 16],
+    };
+    assert_eq!(
+        StationFrame::decode(&ready.encode().unwrap()).unwrap(),
+        ready
+    );
+    let result = StationFrame::Result {
+        request_id: 42,
+        outcome: TransportOutcome::Transient,
+        failure_class: Some(licoarc::transport::FailureClass::MailboxFull),
+        retry_after_ms: Some(5_000),
+    };
+    assert_eq!(
+        StationFrame::decode(&result.encode().unwrap()).unwrap(),
+        result
+    );
+    let deliver = StationFrame::Deliver {
+        delivery_sequence: 3,
+        handle: [4; 32],
+        packet: vec![0xbb; 16],
+    };
+    assert_eq!(
+        StationFrame::decode(&deliver.encode().unwrap()).unwrap(),
+        deliver
+    );
+    assert_eq!(
+        StationFrame::decode(&StationFrame::Drained.encode().unwrap()).unwrap(),
+        StationFrame::Drained
+    );
+
+    // Wrong direction: a client decoder rejects station frames and vice versa.
+    assert!(ClientFrame::decode(&challenge.encode().unwrap()).is_err());
+    assert!(StationFrame::decode(&hello.encode().unwrap()).is_err());
+
+    // Closed-map: an unknown label rejects the frame.
+    let extra = CborValue::Map(BTreeMap::from([
+        (0, CborValue::Unsigned(20)),
+        (9, CborValue::Unsigned(1)),
+    ]));
+    assert!(StationFrame::decode(&licoarc::encoding::encode(&extra).unwrap()).is_err());
+
+    // Missing label and wrong bstr size reject.
+    let short_key = CborValue::Map(BTreeMap::from([
+        (0, CborValue::Unsigned(1)),
+        (1, CborValue::Bytes(vec![0; 31])),
+        (2, CborValue::Bytes(vec![0; 64])),
+    ]));
+    assert!(ClientFrame::decode(&licoarc::encoding::encode(&short_key).unwrap()).is_err());
+    let missing = CborValue::Map(BTreeMap::from([(0, CborValue::Unsigned(1))]));
+    assert!(ClientFrame::decode(&licoarc::encoding::encode(&missing).unwrap()).is_err());
+
+    // Packet bounds: empty and over-limit packets reject.
+    assert!(
+        ClientFrame::Send {
+            request_id: 1,
+            handle: [0; 32],
+            packet: Vec::new(),
+        }
+        .encode()
+        .is_err()
     );
     assert!(
-        transport::operation_from_path(&format!("/v1/handles/{}B/claim", "A".repeat(42))).is_err()
-    );
-
-    let duplicate_settlement = CborValue::Map(BTreeMap::from([
-        (0, CborValue::Bytes(vec![1; 32])),
-        (1, CborValue::Unsigned(1)),
-        (
-            2,
-            CborValue::Array(vec![
-                CborValue::Map(BTreeMap::from([
-                    (0, CborValue::Bytes(vec![2; 32])),
-                    (1, CborValue::Unsigned(0)),
-                ])),
-                CborValue::Map(BTreeMap::from([
-                    (0, CborValue::Bytes(vec![2; 32])),
-                    (1, CborValue::Unsigned(1)),
-                ])),
-            ]),
-        ),
-    ]));
-    assert_eq!(
-        transport::validate_control_record(Operation::Settle, &duplicate_settlement)
-            .unwrap_err()
-            .code,
-        ErrorCode::InvalidRepresentation
+        ClientFrame::Send {
+            request_id: 1,
+            handle: [0; 32],
+            packet: vec![0; licoarc::transport::MAX_PACKET_BYTES + 1],
+        }
+        .encode()
+        .is_err()
     );
 }
 
