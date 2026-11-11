@@ -579,10 +579,10 @@ fn exchange(session: &mut Session, from_initiator: &[u8], from_responder: &[u8])
     let round = session.round;
     let responder_send = session
         .responder_custody
-        .stage_x25519(0x90 + u128::from(round), [0x90 + round; 32]);
+        .stage_x25519(0x90 + u128::from(round), random_secret());
     let initiator_receive = session
         .initiator_custody
-        .stage_x25519(0xA0 + u128::from(round), [0xA0 + round; 32]);
+        .stage_x25519(0xA0 + u128::from(round), random_secret());
 
     let pending = session.initiator.send_record(from_initiator, None).unwrap();
     session

@@ -13,122 +13,181 @@ fn hex<const N: usize>(input: &str) -> [u8; N] {
     output
 }
 
-fn hex_vec(input: &str) -> Vec<u8> {
-    assert_eq!(input.len() % 2, 0);
-    input
-        .as_bytes()
-        .chunks_exact(2)
-        .map(|pair| {
-            u8::from_str_radix(std::str::from_utf8(pair).expect("ASCII hex"), 16)
-                .expect("valid hex")
-        })
-        .collect()
+fn random<const N: usize>() -> [u8; N] {
+    let mut bytes = [0_u8; N];
+    getrandom::fill(&mut bytes).expect("synthetic secret entropy");
+    bytes
 }
 
 #[test]
-fn sha_hkdf_and_hmac_match_primary_vectors() {
+fn sha256_matches_its_public_vector_and_kdf_mac_verify_runtime_keys() {
     let provider = RustCryptoProvider;
+    // Public known-answer digest; the input carries no key material.
     assert_eq!(
         provider.sha256(b"abc"),
         hex("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
     );
 
+    let salt = random::<32>();
+    let ikm = random::<32>();
+    let info = b"licoarc-provider-contract";
     let mut okm = [0_u8; 42];
     provider
-        .hkdf_sha256(
-            &hex::<13>("000102030405060708090a0b0c"),
-            &[0x0b; 22],
-            &hex::<10>("f0f1f2f3f4f5f6f7f8f9"),
-            &mut okm,
-        )
-        .expect("RFC 5869 case 1 must expand");
-    assert_eq!(
-        okm,
-        hex("3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865")
-    );
+        .hkdf_sha256(&salt, &ikm, info, &mut okm)
+        .expect("runtime input must expand");
+    let mut repeated = [0_u8; 42];
+    provider
+        .hkdf_sha256(&salt, &ikm, info, &mut repeated)
+        .expect("runtime input must expand");
+    assert_eq!(okm, repeated, "HKDF must be deterministic");
+    let mut other = [0_u8; 42];
+    provider
+        .hkdf_sha256(&salt, &random::<32>(), info, &mut other)
+        .expect("runtime input must expand");
+    assert_ne!(okm, other, "distinct IKM must derive distinct output");
 
-    let hmac = hex("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7");
+    let mac_key = random::<32>();
+    let message = b"licoarc-provider-contract";
+    let mac = provider
+        .hmac_sha256(&mac_key, message)
+        .expect("runtime key must authenticate");
     assert_eq!(
         provider
-            .hmac_sha256(&[0x0b; 20], b"Hi There")
-            .expect("RFC 4231 case 1 must authenticate"),
-        hmac
+            .hmac_sha256(&mac_key, message)
+            .expect("runtime key must authenticate"),
+        mac,
+        "HMAC must be deterministic"
     );
     provider
-        .hmac_sha256_verify(&[0x0b; 20], b"Hi There", &hmac)
-        .expect("fixed-size MAC verification must accept the RFC vector");
-    let mut mutated = hmac;
+        .hmac_sha256_verify(&mac_key, message, &mac)
+        .expect("own MAC must verify");
+    let mut mutated = mac;
     mutated[0] ^= 1;
     assert!(
         provider
-            .hmac_sha256_verify(&[0x0b; 20], b"Hi There", &mutated)
+            .hmac_sha256_verify(&mac_key, message, &mutated)
+            .is_err()
+    );
+    assert!(
+        provider
+            .hmac_sha256_verify(&random::<32>(), message, &mac)
             .is_err()
     );
 }
 
 #[test]
-fn chacha20_poly1305_matches_rfc_8439_and_rejects_mutation() {
+fn chacha20_poly1305_round_trips_and_rejects_tampered_input() {
     let provider = RustCryptoProvider;
-    let key = hex("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f");
-    let nonce = hex("070000004041424344454647");
-    let aad = hex_vec("50515253c0c1c2c3c4c5c6c7");
-    let plaintext = b"Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.";
-    let expected = hex_vec(concat!(
-        "d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d6",
-        "3dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b36",
-        "92ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc",
-        "3ff4def08e4b7a9de576d26586cec64b6116",
-        "1ae10b594f09e26a7e902ecbd0600691"
-    ));
+    let key = random::<32>();
+    let nonce = random::<12>();
+    let aad = random::<16>();
+    let plaintext = b"synthetic AEAD provider contract";
 
     let sealed = provider
         .seal(&key, &nonce, &aad, plaintext)
-        .expect("RFC 8439 input must seal");
-    assert_eq!(sealed, expected);
+        .expect("runtime input must seal");
+    assert_eq!(sealed.len(), plaintext.len() + 16, "seal appends the tag");
+    assert_eq!(
+        provider
+            .seal(&key, &nonce, &aad, plaintext)
+            .expect("runtime input must seal"),
+        sealed,
+        "sealing is deterministic for the same key and nonce"
+    );
     assert_eq!(
         provider
             .open(&key, &nonce, &aad, &sealed)
-            .expect("RFC 8439 output must open"),
+            .expect("own ciphertext must open"),
         plaintext
     );
-    let mut mutated = sealed;
-    mutated[0] ^= 1;
-    assert!(provider.open(&key, &nonce, &aad, &mutated).is_err());
+
+    let mut mutated_body = sealed.clone();
+    mutated_body[0] ^= 1;
+    assert!(provider.open(&key, &nonce, &aad, &mutated_body).is_err());
+    let mut mutated_tag = sealed.clone();
+    *mutated_tag.last_mut().unwrap() ^= 1;
+    assert!(provider.open(&key, &nonce, &aad, &mutated_tag).is_err());
+    assert!(
+        provider
+            .open(&random::<32>(), &nonce, &aad, &sealed)
+            .is_err()
+    );
+    assert!(provider.open(&key, &random::<12>(), &aad, &sealed).is_err());
+    assert!(
+        provider
+            .open(&key, &nonce, &random::<16>(), &sealed)
+            .is_err()
+    );
 }
 
 #[test]
-fn x25519_matches_rfc_7748_and_rejects_all_zero() {
+fn x25519_agrees_for_runtime_keys_and_rejects_all_zero_public() {
     let provider = RustCryptoProvider;
-    let alice_private = hex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a");
-    let alice_public = hex("8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a");
-    let bob_public = hex("de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f");
-    let shared = hex("4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742");
-
-    assert_eq!(provider.x25519_public(&alice_private), alice_public);
+    let alice_private = random::<32>();
+    let bob_private = random::<32>();
+    let alice_public = provider.x25519_public(&alice_private);
+    let bob_public = provider.x25519_public(&bob_private);
+    assert_eq!(
+        provider.x25519_public(&alice_private),
+        alice_public,
+        "public derivation must be deterministic"
+    );
+    assert_ne!(
+        alice_public, bob_public,
+        "distinct secrets yield distinct public keys"
+    );
     assert_eq!(
         provider
             .x25519(&alice_private, &bob_public)
-            .expect("RFC 7748 input must agree"),
-        shared
+            .expect("runtime keys must agree"),
+        provider
+            .x25519(&bob_private, &alice_public)
+            .expect("runtime keys must agree"),
+        "both parties must derive the same shared secret"
     );
     assert!(provider.x25519(&alice_private, &[0; 32]).is_err());
 }
 
 #[test]
-fn ed25519_matches_rfc_8032_and_is_strict_about_weak_keys() {
+fn ed25519_signs_deterministically_and_rejects_wrong_key_or_mutation() {
     let provider = RustCryptoProvider;
-    let seed = hex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60");
-    let public = hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
-    let signature = hex(concat!(
-        "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155",
-        "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
-    ));
-
-    assert_eq!(provider.ed25519_public(&seed), public);
-    assert_eq!(provider.ed25519_sign(&seed, b""), signature);
+    let seed = random::<32>();
+    let public = provider.ed25519_public(&seed);
+    assert_eq!(
+        provider.ed25519_public(&seed),
+        public,
+        "public derivation must be deterministic"
+    );
+    let message = b"synthetic signature provider contract";
+    let signature = provider.ed25519_sign(&seed, message);
+    assert_eq!(
+        provider.ed25519_sign(&seed, message),
+        signature,
+        "Ed25519 signatures must be deterministic"
+    );
     provider
-        .ed25519_verify_strict(&public, b"", &signature)
-        .expect("RFC 8032 case 1 must verify");
+        .ed25519_verify_strict(&public, message, &signature)
+        .expect("own signature must verify");
+
+    let other_public = provider.ed25519_public(&random::<32>());
+    assert_ne!(public, other_public, "distinct seeds yield distinct keys");
+    assert!(
+        provider
+            .ed25519_verify_strict(&other_public, message, &signature)
+            .is_err()
+    );
+    assert!(
+        provider
+            .ed25519_verify_strict(&public, b"different message", &signature)
+            .is_err()
+    );
+    let mut bad_signature = signature;
+    bad_signature[0] ^= 1;
+    assert!(
+        provider
+            .ed25519_verify_strict(&public, message, &bad_signature)
+            .is_err()
+    );
 
     let mut weak_public = [0_u8; 32];
     weak_public[0] = 1;

@@ -1002,17 +1002,24 @@ mod tests {
         Error::terminal(ErrorCode::ProviderFailure, Stage::Provider)
     }
 
+    /// Test keys are minted per run, never defaulted.
+    fn random_secret<const N: usize>() -> [u8; N] {
+        let mut bytes = [0_u8; N];
+        getrandom::fill(&mut bytes).expect("synthetic secret entropy");
+        bytes
+    }
+
     fn pair() -> (TestCustody, RatchetState, RatchetState) {
         let provider = RustCryptoProvider;
-        let initiator_private = [7; 32];
-        let responder_private = [8; 32];
+        let initiator_private = random_secret();
+        let responder_private = random_secret();
         let custody = TestCustody {
             keys: HashMap::from([
                 (1, initiator_private),
                 (2, responder_private),
-                (3, [13; 32]),
-                (4, [14; 32]),
-                (5, [15; 32]),
+                (3, random_secret()),
+                (4, random_secret()),
+                (5, random_secret()),
             ]),
             fail_x25519_public: None,
         };
@@ -1022,12 +1029,19 @@ mod tests {
                 &provider.x25519_public(&responder_private),
             )
             .unwrap();
-        let hybrid =
-            HybridSecrets::derive(&provider, &shared, &[9; 32], &[10; 32], &[11; 32]).unwrap();
+        let hybrid = HybridSecrets::derive(
+            &provider,
+            &shared,
+            &random_secret(),
+            &random_secret(),
+            &random_secret(),
+        )
+        .unwrap();
+        let ratchet_root = random_secret();
         let initiator = RatchetState::initiator(
             &provider,
             &hybrid,
-            [12; 32],
+            ratchet_root,
             SecretHandle::from_custody_token(1),
             provider.x25519_public(&initiator_private),
             provider.x25519_public(&responder_private),
@@ -1036,7 +1050,7 @@ mod tests {
         let responder = RatchetState::responder(
             &provider,
             &hybrid,
-            [12; 32],
+            ratchet_root,
             SecretHandle::from_custody_token(2),
             provider.x25519_public(&responder_private),
             provider.x25519_public(&initiator_private),
