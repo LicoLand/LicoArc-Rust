@@ -1,4 +1,6 @@
 target/
+fuzz/corpus/
+fuzz/artifacts/
 build/
 cache/
 coverage/
