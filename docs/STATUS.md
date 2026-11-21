@@ -60,6 +60,7 @@ published version is recorded here with its source commit and checksum.
 | Version | Source commit | crates.io checksum (SHA-256) |
 | --- | --- | --- |
 | 0.1.0 | `d6e4e95b6e03ba48576ede40de774cf2a3133506` | `c34688a9ebd9975271274ae8572b96f5b5560dd23ae6f9d1ebebead35d8f4a02` |
+| 0.2.0 | `6662af832de436910cdad031bb10d3de8c4acc33` | `40b4fe371118f8aa2822a795b55ae395c77f1df29f173ec1408e7d2efcb8576a` |
 
 No Protocol Line publication, deployment, or hosted operation is claimed.
 
