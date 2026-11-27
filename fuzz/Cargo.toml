@@ -1,0 +1,44 @@
+[package]
+name = "licoarc-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+licoarc = { path = ".." }
+
+[workspace]
+
+[[bin]]
+name = "cbor_decode"
+path = "fuzz_targets/cbor_decode.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "mailbox_frames"
+path = "fuzz_targets/mailbox_frames.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "first_packet"
+path = "fuzz_targets/first_packet.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "session_accept"
+path = "fuzz_targets/session_accept.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "record_header"
+path = "fuzz_targets/record_header.rs"
+test = false
+doc = false

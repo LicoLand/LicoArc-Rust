@@ -1169,6 +1169,8 @@ fn handshake_and_confirmation() {
         assert_eq!(lifecycle.adopted, mutations_before_changed_replay.0);
         assert_eq!(lifecycle.deleted, mutations_before_changed_replay.1);
     }
+    let wire = licoarc::endpoint::encode_session_accept(&accept).unwrap();
+    let accept = licoarc::endpoint::decode_session_accept(&wire).unwrap();
     initiator.verify_session_accept(&accept).unwrap();
     let i2r = initiator.send_record(b"opaque-i2r", None).unwrap();
     assert_eq!(initiator.retry_record().unwrap(), i2r);
@@ -1250,6 +1252,50 @@ fn handshake_and_confirmation() {
         assert_same_tokens(&lifecycle.deleted, &[62, 63, 64, 61, 81]);
     }
     assert!(initiator.into_store().load().unwrap().pending().is_empty());
+}
+
+#[test]
+fn session_accept_wire_codec_is_closed_bounded_and_canonical() {
+    let accept = licoarc::endpoint::SessionAccept {
+        transcript_digest: [1; 32],
+        session_context_digest: [2; 32],
+        initiator_user_authority_state_digest: [3; 32],
+        responder_identity_state_digest: [4; 32],
+        responder_user_authority_state_digest: [5; 32],
+        pair_sequence: 7,
+        mac: [6; 32],
+    };
+    let wire = licoarc::endpoint::encode_session_accept(&accept).unwrap();
+    assert!(wire.len() <= licoarc::protection::MAX_SESSION_ACCEPT_BYTES);
+    assert_eq!(
+        licoarc::endpoint::decode_session_accept(&wire).unwrap(),
+        accept
+    );
+    let mut zero_sequence = accept.clone();
+    zero_sequence.pair_sequence = 0;
+    assert!(licoarc::endpoint::encode_session_accept(&zero_sequence).is_err());
+    for mutated in [
+        Vec::new(),
+        wire[..wire.len() - 1].to_vec(),
+        [wire.clone(), vec![0x00]].concat(),
+        vec![0xf6; licoarc::protection::MAX_SESSION_ACCEPT_BYTES + 1],
+    ] {
+        assert!(licoarc::endpoint::decode_session_accept(&mutated).is_err());
+    }
+    let extra_label = licoarc::encoding::encode(&licoarc::encoding::CborValue::Map(
+        std::collections::BTreeMap::from([
+            (0, licoarc::encoding::CborValue::Bytes(vec![1; 32])),
+            (1, licoarc::encoding::CborValue::Bytes(vec![2; 32])),
+            (2, licoarc::encoding::CborValue::Bytes(vec![3; 32])),
+            (3, licoarc::encoding::CborValue::Bytes(vec![4; 32])),
+            (4, licoarc::encoding::CborValue::Bytes(vec![5; 32])),
+            (5, licoarc::encoding::CborValue::Unsigned(7)),
+            (6, licoarc::encoding::CborValue::Bytes(vec![6; 32])),
+            (7, licoarc::encoding::CborValue::Unsigned(0)),
+        ]),
+    ))
+    .unwrap();
+    assert!(licoarc::endpoint::decode_session_accept(&extra_label).is_err());
 }
 
 #[test]

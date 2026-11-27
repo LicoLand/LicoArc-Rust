@@ -1682,6 +1682,53 @@ pub fn decode_first_packet(bytes: &[u8]) -> Result<FirstPacket, Error> {
     Ok(packet)
 }
 
+fn validate_session_accept_shape(accept: &SessionAccept) -> Result<(), Error> {
+    if accept.pair_sequence == 0 || accept.pair_sequence > crate::state::MAX_SAFE_INTEGER {
+        return Err(handshake_error());
+    }
+    Ok(())
+}
+
+fn accept_value(accept: &SessionAccept) -> CborValue {
+    let CborValue::Map(mut map) = accept_unsigned_value(accept) else {
+        unreachable!()
+    };
+    map.insert(6, CborValue::Bytes(accept.mac.to_vec()));
+    CborValue::Map(map)
+}
+
+pub fn encode_session_accept(accept: &SessionAccept) -> Result<Vec<u8>, Error> {
+    validate_session_accept_shape(accept)?;
+    let encoded = encoding::encode(&accept_value(accept))?;
+    if encoded.len() > crate::protection::MAX_SESSION_ACCEPT_BYTES {
+        return Err(handshake_error());
+    }
+    Ok(encoded)
+}
+
+pub fn decode_session_accept(bytes: &[u8]) -> Result<SessionAccept, Error> {
+    if bytes.len() > crate::protection::MAX_SESSION_ACCEPT_BYTES {
+        return Err(handshake_error());
+    }
+    let CborValue::Map(m) = encoding::decode(bytes)? else {
+        return Err(handshake_error());
+    };
+    if m.len() != 7 {
+        return Err(handshake_error());
+    }
+    let accept = SessionAccept {
+        transcript_digest: wire_fixed(&m, 0)?,
+        session_context_digest: wire_fixed(&m, 1)?,
+        initiator_user_authority_state_digest: wire_fixed(&m, 2)?,
+        responder_identity_state_digest: wire_fixed(&m, 3)?,
+        responder_user_authority_state_digest: wire_fixed(&m, 4)?,
+        pair_sequence: wire_uint(&m, 5)?,
+        mac: wire_fixed(&m, 6)?,
+    };
+    validate_session_accept_shape(&accept)?;
+    Ok(accept)
+}
+
 fn wire_bytes(
     map: &std::collections::BTreeMap<u64, CborValue>,
     label: u64,
@@ -1807,8 +1854,8 @@ fn session_context<P: Provider>(
     Ok(provider.sha256(&[b"LICOARC-V1/SESSION/CONTEXT\0".as_slice(), &encoded].concat()))
 }
 
-fn accept_unsigned(accept: &SessionAccept) -> Result<Vec<u8>, Error> {
-    let encoded = encoding::encode(&CborValue::Map(std::collections::BTreeMap::from([
+fn accept_unsigned_value(accept: &SessionAccept) -> CborValue {
+    CborValue::Map(std::collections::BTreeMap::from([
         (0, CborValue::Bytes(accept.transcript_digest.to_vec())),
         (1, CborValue::Bytes(accept.session_context_digest.to_vec())),
         (
@@ -1824,7 +1871,11 @@ fn accept_unsigned(accept: &SessionAccept) -> Result<Vec<u8>, Error> {
             CborValue::Bytes(accept.responder_user_authority_state_digest.to_vec()),
         ),
         (5, CborValue::Unsigned(accept.pair_sequence)),
-    ])))?;
+    ]))
+}
+
+fn accept_unsigned(accept: &SessionAccept) -> Result<Vec<u8>, Error> {
+    let encoded = encoding::encode(&accept_unsigned_value(accept))?;
     if encoded
         .len()
         .checked_add(35)
